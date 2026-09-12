@@ -1,0 +1,9 @@
+name: Feature request
+description: Propose a scoped improvement
+title: "feat: "
+body:
+  - type: textarea
+    attributes: { label: Problem and proposed outcome }
+    validations: { required: true }
+  - type: textarea
+    attributes: { label: Capability and architecture impact }

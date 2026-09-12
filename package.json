@@ -1,0 +1,31 @@
+{
+  "name": "tstui-workspace",
+  "version": "0.0.0",
+  "private": true,
+  "packageManager": "bun@1.4.2",
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "lint": "oxlint --deny-warnings packages && bun scripts/check-boundaries.ts",
+    "typecheck": "tsc -b",
+    "test": "bun test",
+    "build": "tsc -b && bun build packages/app/src/main.ts --target=bun --external '@opentui/core-*' --outdir=dist",
+    "check": "bun run format:check && bun run lint && bun run typecheck && bun test && bun run build",
+    "tstui": "bun run packages/app/src/main.ts",
+    "demo:smoke": "bun run packages/app/src/main.ts --demo --smoke",
+    "spike:honeybbq": "bun run scripts/honeybbq-spike.ts",
+    "spike:connect": "bun run scripts/live-connect.ts"
+  },
+  "devDependencies": {
+    "@honeybbq/teamspeak-client": "0.2.3",
+    "@opentui/solid": "0.5.11",
+    "@types/bun": "1.4.2",
+    "oxlint": "1.82.0",
+    "prettier": "3.9.6",
+    "typescript": "5.9.2",
+    "yaml-lint": "1.7.0"
+  }
+}

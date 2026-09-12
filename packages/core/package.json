@@ -1,0 +1,13 @@
+{
+  "name": "@tstui/core",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@honeybbq/teamspeak-client": "0.2.3",
+    "effect": "4.0.0-rc.115"
+  }
+}

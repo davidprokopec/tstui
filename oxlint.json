@@ -1,0 +1,5 @@
+{
+  "plugins": ["typescript"],
+  "categories": { "correctness": "error", "suspicious": "warn" },
+  "rules": { "no-console": "off", "typescript/no-explicit-any": "error" }
+}

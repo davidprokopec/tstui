@@ -1,0 +1,16 @@
+{
+  "name": "@tstui/tui",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "dependencies": {
+    "@opentui/core": "0.5.11",
+    "@opentui/keymap": "0.5.11",
+    "@opentui/solid": "0.5.11",
+    "@tstui/core": "workspace:*",
+    "solid-js": "1.9.15"
+  }
+}
