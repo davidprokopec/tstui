@@ -56,6 +56,7 @@ test("default OpenTUI keymap dispatches focus and focus-gated tree commands", as
     setup.mockInput.pressArrow("down");
     setup.mockInput.pressEnter();
     setup.mockInput.pressTab();
+    setup.mockInput.pressTab({ shift: true });
     focus = "chat";
     await setup.mockInput.pressKey("k");
     expect(commands).toEqual([
@@ -63,6 +64,7 @@ test("default OpenTUI keymap dispatches focus and focus-gated tree commands", as
       "tree-down",
       "join-channel",
       "focus-next",
+      "focus-prev",
     ]);
   } finally {
     dispose();
