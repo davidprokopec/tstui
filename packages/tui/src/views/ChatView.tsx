@@ -7,8 +7,8 @@ export type ChatViewProps = {
   readonly dispatch: (command: CommandInvocation) => void;
 };
 export const ChatView = (props: ChatViewProps) => {
-  const target = props.state.activeChannelId ?? "";
-  const messages = props.state.messages[target] ?? [];
+  const target = (): string => props.state.activeChannelId ?? "";
+  const messages = () => props.state.messages[target()] ?? [];
   return (
     <box
       flexDirection="column"
@@ -18,18 +18,16 @@ export const ChatView = (props: ChatViewProps) => {
       padding={1}
     >
       <text fg={props.theme.accent}>
-        Chat · {target === "" ? "no channel" : `#${target}`}
+        Chat · {target() === "" ? "no channel" : `#${target()}`}
       </text>
       <scrollbox flexGrow={1}>
-        {messages.map((message) => (
+        {messages().map((message) => (
           <text fg={props.theme.text}>
             {message.sender}: {message.body}
           </text>
         ))}
       </scrollbox>
-      <text fg={props.theme.muted}>
-        Press i to compose · Enter to send (interactive editor planned M2)
-      </text>
+      <text fg={props.theme.muted}>Read-only demo transcript</text>
     </box>
   );
 };

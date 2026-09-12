@@ -6,7 +6,11 @@ const rules: ReadonlyArray<readonly [string, RegExp, string]> = [
     /@opentui|solid-js|@opencode/,
     "core renderer/host import",
   ],
-  ["packages/tui/src/**/*.{ts,tsx}", /adapters\//, "tui adapter deep import"],
+  [
+    "packages/tui/src/**/*.{ts,tsx}",
+    /adapters\/|node:fs|node:path|Bun\.file|teamspeak-client/,
+    "tui protocol/filesystem import",
+  ],
   [
     "packages/{core,tui}/src/**/*.{ts,tsx}",
     /createCliRenderer/,

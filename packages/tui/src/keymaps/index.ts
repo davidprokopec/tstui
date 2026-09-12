@@ -16,36 +16,17 @@ export const installKeymaps = <
   dispatch: (command: CommandInvocation) => void,
   onQuit: () => void,
 ): (() => void) => {
-  const run =
-    (id: string, args: Readonly<Record<string, string>> = {}) =>
-    (): void =>
-      dispatch({ id, args });
   const layers: ReadonlyArray<KeymapLayer<TTarget, TEvent>> = [
     {
       priority: 100,
-      bindings: [
-        { key: "q", cmd: "quit" },
-        { key: "?", cmd: "help" },
-      ],
-      commands: [
-        { name: "quit", run: (): void => onQuit() },
-        { name: "help", run: run("open-private-chat", { targetId: "help" }) },
-      ],
-    },
-    {
-      priority: 20,
-      bindings: [{ key: "enter", cmd: "join-channel" }],
-      commands: [
-        { name: "join-channel", run: run("join-channel", { channelId: "1" }) },
-      ],
-    },
-    {
-      priority: 10,
-      bindings: [{ key: "ctrl+enter", cmd: "send-message" }],
+      bindings: [{ key: "q", cmd: "quit" }],
       commands: [
         {
-          name: "send-message",
-          run: run("send-message", { targetId: "1", body: "Hello from tstui" }),
+          name: "quit",
+          run: (): void => {
+            dispatch({ id: "quit", args: {} });
+            onQuit();
+          },
         },
       ],
     },

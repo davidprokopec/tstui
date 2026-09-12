@@ -1,5 +1,5 @@
 import { createCliRenderer } from "@opentui/core";
-import { createOpenTuiKeymap } from "@opentui/keymap/opentui";
+import { createDefaultOpenTuiKeymap } from "@opentui/keymap/opentui";
 import { render, testRender } from "@opentui/solid";
 import { Effect, Fiber, ManagedRuntime, Stream, SubscriptionRef } from "effect";
 import { createSignal, onCleanup } from "solid-js";
@@ -85,7 +85,7 @@ export const run = async (args: ReadonlyArray<string>): Promise<void> => {
         const stopped = new Promise<void>((resolve) => {
           finish = resolve;
         });
-        const keymap = createOpenTuiKeymap(renderer);
+        const keymap = createDefaultOpenTuiKeymap(renderer);
         const disposeKeymaps = installKeymaps(keymap, dispatch, () =>
           finish?.(),
         );

@@ -1,6 +1,7 @@
 import { expect, test } from "bun:test";
 import { initialState } from "@tstui/core";
 import { testRender } from "@opentui/solid";
+import { createComponent, createSignal } from "solid-js";
 import { TstuiApp } from "../src/index.js";
 
 test("renders server tree, chat and honest capabilities", async () => {
@@ -26,4 +27,48 @@ test("renders server tree, chat and honest capabilities", async () => {
   expect(frame).toContain("Demo Server");
   expect(frame).toContain("Ada: hello");
   expect(frame).toContain("voice unavailable");
+});
+
+test("reacts to projected channel and message updates", async () => {
+  const [state, setState] = createSignal({
+    ...initialState,
+    phase: "connected" as const,
+    activeChannelId: "1",
+  });
+  const setup = await testRender(
+    () =>
+      createComponent(TstuiApp, {
+        get state() {
+          return state();
+        },
+        dispatch: () => undefined,
+      }),
+    { width: 80, height: 24 },
+  );
+  try {
+    await setup.renderOnce();
+    expect(setup.captureCharFrame()).toContain("Chat · #1");
+    setState({
+      ...state(),
+      activeChannelId: "2",
+      messages: {
+        "2": [
+          {
+            id: "new",
+            targetId: "2",
+            sender: "Ada",
+            body: "reactive update",
+            timestamp: 1,
+          },
+        ],
+      },
+    });
+    await setup.renderOnce();
+    const frame = setup.captureCharFrame();
+    expect(frame).toContain("Chat · #2");
+    expect(frame).toContain("Ada: reactive update");
+    expect(frame).not.toContain("Chat · #1");
+  } finally {
+    setup.renderer.destroy();
+  }
 });

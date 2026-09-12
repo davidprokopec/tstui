@@ -45,6 +45,7 @@ bun run lint
 bun run typecheck
 bun test
 bun run build
+bun run demo:built:smoke
 bun run check
 ```
 

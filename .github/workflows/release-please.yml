@@ -3,10 +3,10 @@ on:
   push:
     branches: [master]
 permissions:
-  contents: write
-  pull-requests: write
+  contents: read
 jobs:
   release-please:
+    if: ${{ false }} # M5 gate: intentionally inert until release validation exists.
     runs-on: ubuntu-latest
     steps:
       - uses: googleapis/release-please-action@v4
