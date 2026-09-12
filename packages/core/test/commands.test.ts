@@ -24,3 +24,20 @@ test("command interpreter rejects unknown and disabled commands", async () => {
     await runtime.dispose();
   }
 });
+
+test("command metadata schemas reject missing arguments", async () => {
+  const runtime = ManagedRuntime.make(makeAppLayer(true));
+  try {
+    const result = await runtime.runPromiseExit(
+      CommandService.use((service) =>
+        service.execute({
+          id: "connect",
+          args: { server: "demo" },
+        }),
+      ),
+    );
+    expect(result._tag).toBe("Failure");
+  } finally {
+    await runtime.dispose();
+  }
+});

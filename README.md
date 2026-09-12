@@ -6,15 +6,15 @@ An experimental, standalone-first TeamSpeak terminal client built with Bun, Type
 
 ## Capability status
 
-| Capability                              | Status                    | Evidence                         |
-| --------------------------------------- | ------------------------- | -------------------------------- |
-| Offline server/channel/client/chat demo | Tested                    | `bun test`; `bun run demo:smoke` |
-| HoneyBBQ identity generation on Bun     | Tested without network    | `bun run spike:honeybbq`         |
-| Live TeamSpeak text connection          | Unverified / gated for M1 | No external server was contacted |
-| Voice/audio                             | Unavailable               | Deliberately deferred to M3      |
-| File transfer                           | Unavailable               | Not implemented                  |
-| OpenCode v2 host                        | Planned for M4            | No plugin package exists         |
-| Prebuilt binaries / releases            | Unavailable               | Source execution only            |
+| Capability                                       | Status                    | Evidence                         |
+| ------------------------------------------------ | ------------------------- | -------------------------------- |
+| Offline server/channel/client/chat demo          | Tested                    | `bun test`; `bun run demo:smoke` |
+| HoneyBBQ identity + client initialization on Bun | Tested without network    | `bun run spike:honeybbq`         |
+| Live TeamSpeak text connection                   | Unverified / gated for M1 | No external server was contacted |
+| Voice/audio                                      | Unavailable               | Deliberately deferred to M3      |
+| File transfer                                    | Unavailable               | Not implemented                  |
+| OpenCode v2 host                                 | Planned for M4            | No plugin package exists         |
+| Prebuilt binaries / releases                     | Unavailable               | Source execution only            |
 
 ## Run the demo
 

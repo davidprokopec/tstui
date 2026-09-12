@@ -15,53 +15,80 @@ export interface CommandMetadata {
   readonly id: string;
   readonly title: string;
   readonly description: string;
+  readonly args: Schema.Schema<object>;
   readonly enabled: (state: AppState) => boolean;
 }
+
+const NoArgs = Schema.Struct({});
+const ConnectArgs = Schema.Struct({
+  server: Schema.String,
+  nickname: Schema.String,
+});
+const ChannelArgs = Schema.Struct({ channelId: Schema.String });
+const MessageArgs = Schema.Struct({
+  targetId: Schema.String,
+  body: Schema.String,
+});
+const PrivateChatArgs = Schema.Struct({ targetId: Schema.String });
+const NicknameArgs = Schema.Struct({ nickname: Schema.String });
 
 export const commandRegistry: ReadonlyArray<CommandMetadata> = [
   {
     id: "connect",
     title: "Connect",
     description: "Connect to a server",
+    args: ConnectArgs,
     enabled: (s) => s.phase === "disconnected",
   },
   {
     id: "disconnect",
     title: "Disconnect",
     description: "Disconnect manually",
+    args: NoArgs,
     enabled: (s) => s.phase !== "disconnected",
   },
   {
     id: "select-channel",
     title: "Select channel",
     description: "Select a chat target",
+    args: ChannelArgs,
     enabled: (s) => s.phase === "connected",
   },
   {
     id: "join-channel",
     title: "Join channel",
     description: "Move to a channel",
+    args: ChannelArgs,
     enabled: (s) => s.phase === "connected",
   },
   {
     id: "send-message",
     title: "Send message",
     description: "Send channel text",
+    args: MessageArgs,
     enabled: (s) => s.phase === "connected",
   },
   {
     id: "open-private-chat",
     title: "Open private chat",
     description: "Select a private target (planned UI)",
+    args: PrivateChatArgs,
     enabled: (s) => s.phase === "connected",
   },
   {
     id: "set-nickname",
     title: "Set nickname",
     description: "Change nickname",
+    args: NicknameArgs,
     enabled: (s) => s.phase === "connected",
   },
-  { id: "quit", title: "Quit", description: "Exit tstui", enabled: () => true },
+  {
+    id: "quit",
+    title: "Quit",
+    description: "Exit tstui",
+    args: NoArgs,
+    enabled: () => true,
+  },
 ];
 
 const required = (
@@ -72,6 +99,47 @@ const required = (
   return value === undefined || value === ""
     ? new CommandError({ message: `Missing argument: ${key}` })
     : Effect.succeed(value);
+};
+
+const validateArgs = (
+  id: string,
+  args: unknown,
+): Effect.Effect<void, CommandError> => {
+  const invalid = () =>
+    new CommandError({ message: `Invalid arguments: ${id}` });
+  switch (id) {
+    case "connect":
+      return Schema.decodeUnknownEffect(ConnectArgs)(args).pipe(
+        Effect.asVoid,
+        Effect.mapError(invalid),
+      );
+    case "select-channel":
+    case "join-channel":
+      return Schema.decodeUnknownEffect(ChannelArgs)(args).pipe(
+        Effect.asVoid,
+        Effect.mapError(invalid),
+      );
+    case "send-message":
+      return Schema.decodeUnknownEffect(MessageArgs)(args).pipe(
+        Effect.asVoid,
+        Effect.mapError(invalid),
+      );
+    case "open-private-chat":
+      return Schema.decodeUnknownEffect(PrivateChatArgs)(args).pipe(
+        Effect.asVoid,
+        Effect.mapError(invalid),
+      );
+    case "set-nickname":
+      return Schema.decodeUnknownEffect(NicknameArgs)(args).pipe(
+        Effect.asVoid,
+        Effect.mapError(invalid),
+      );
+    default:
+      return Schema.decodeUnknownEffect(NoArgs)(args).pipe(
+        Effect.asVoid,
+        Effect.mapError(invalid),
+      );
+  }
 };
 
 export interface CommandServiceShape {
@@ -113,6 +181,7 @@ export const CommandLive = Layer.effect(
         return yield* new CommandError({
           message: `Command disabled: ${invocation.id}`,
         });
+      yield* validateArgs(invocation.id, invocation.args);
       switch (invocation.id) {
         case "connect":
           return yield* teamspeak

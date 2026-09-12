@@ -1,7 +1,8 @@
 import { createCliRenderer } from "@opentui/core";
 import { createOpenTuiKeymap } from "@opentui/keymap/opentui";
 import { render, testRender } from "@opentui/solid";
-import { Effect, ManagedRuntime, Stream, SubscriptionRef } from "effect";
+import { Effect, Fiber, ManagedRuntime, Stream, SubscriptionRef } from "effect";
+import { createSignal, onCleanup } from "solid-js";
 import {
   CommandService,
   type CommandInvocation,
@@ -89,10 +90,22 @@ export const run = async (args: ReadonlyArray<string>): Promise<void> => {
           finish?.(),
         );
         try {
-          await render(
-            () => <TstuiApp state={state} dispatch={dispatch} />,
-            renderer,
-          );
+          await render(() => {
+            const [currentState, setCurrentState] = createSignal(state);
+            const projectionFiber = runtime.runFork(
+              ProjectionService.use((projection) =>
+                SubscriptionRef.changes(projection.state).pipe(
+                  Stream.runForEach((nextState) =>
+                    Effect.sync(() => setCurrentState(nextState)),
+                  ),
+                ),
+              ),
+            );
+            onCleanup(() => {
+              Effect.runFork(Fiber.interrupt(projectionFiber));
+            });
+            return <TstuiApp state={currentState()} dispatch={dispatch} />;
+          }, renderer);
           await stopped;
         } finally {
           disposeKeymaps();
