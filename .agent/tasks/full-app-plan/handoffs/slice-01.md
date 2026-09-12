@@ -25,8 +25,8 @@ tree selection and active channel without deriving self identity from adapter
 specific client IDs. No live TeamSpeak behavior was tested or claimed.
 
 Follow-up: Parent should validate this handoff and obtain independent review of
-commit `f830ca9` plus the evidence commit before integrating. Do not start M1-S2
-until this slice is accepted.
+the branch commits before integrating. Do not start M1-S2 until this slice is
+accepted.
 
 ```json
 {
@@ -36,7 +36,7 @@ until this slice is accepted.
   "outcome": "Implemented and locally verified keyboard focus cycling plus bounded channel-tree navigation and selected-channel joining against the fake adapter.",
   "facts": [
     {
-      "statement": "Implementation commit f830ca9 is based on baseline 575fe652da514b07f59eb84b3245f8ab55c0fc71.",
+      "statement": "Implementation commits f830ca9 and 3db79a2 descend from baseline 575fe652da514b07f59eb84b3245f8ab55c0fc71.",
       "evidenceRefs": [".agent/tasks/full-app-plan/test-reports/slice-01.md"]
     },
     {

@@ -1,6 +1,7 @@
 # M1-S1 verification report
 
-Implementation commit: `f830ca9` (`feat: add focus and channel tree navigation`).
+Implementation commits: `f830ca9` (`feat: add focus and channel tree
+navigation`) and `3db79a2` (`test: cover reverse focus cycling`).
 Baseline: `575fe652da514b07f59eb84b3245f8ab55c0fc71`.
 
 ## Automated verification
@@ -16,7 +17,7 @@ Baseline: `575fe652da514b07f59eb84b3245f8ab55c0fc71`.
   failures, 85 assertions.
 - Targeted keymap/reactivity/integration command:
   `bun test packages/app/test/keymaps.test.ts packages/tui/test/render.test.tsx packages/core/test/commands.test.ts`
-  — pass: 7 tests, 0 failures, 25 assertions. Coverage includes real OpenTUI
+  — pass: 8 tests, 0 failures, 29 assertions. Coverage includes real OpenTUI
   mock key input, focus gating, reducer distinction between selected and active
   channels, cursor bounds, selection re-rendering, and fake-adapter joining.
 - `git diff --check` — pass.
