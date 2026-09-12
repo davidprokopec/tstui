@@ -55,4 +55,41 @@ describe("state projection reducer", () => {
     expect(focused.selectedChannelId).toBe("2");
     expect(focused.focus).toBe("chat");
   });
+
+  test("replaces removed selections with a valid deterministic fallback", () => {
+    const state = {
+      ...initialState,
+      channels: [
+        { id: "1", parentId: "0", name: "Lobby" },
+        { id: "2", parentId: "0", name: "Development" },
+      ],
+      selectedChannelId: "2",
+    };
+    const replacement = reduceEvent(state, {
+      _tag: "ChannelListUpdated",
+      channels: [
+        { id: "3", parentId: "0", name: "Support" },
+        { id: "4", parentId: "0", name: "Games" },
+      ],
+    });
+    const removed = reduceEvent(replacement, {
+      _tag: "ChannelListUpdated",
+      channels: [],
+    });
+
+    expect(replacement.selectedChannelId).toBe("3");
+    expect(removed.selectedChannelId).toBeNull();
+  });
+
+  test("ignores channel selections that are not in the projected tree", () => {
+    const state = {
+      ...initialState,
+      channels: [{ id: "1", parentId: "0", name: "Lobby" }],
+      selectedChannelId: "1",
+    };
+
+    expect(
+      reduceEvent(state, { _tag: "ChannelSelected", channelId: "bot" }),
+    ).toBe(state);
+  });
 });

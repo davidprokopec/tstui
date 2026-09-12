@@ -108,9 +108,9 @@ export const commandRegistry: ReadonlyArray<CommandMetadata> = [
   {
     id: "open-private-chat",
     title: "Open private chat",
-    description: "Select a private target (planned UI)",
+    description: "Unavailable until private chat UI is implemented",
     args: PrivateChatArgs,
-    enabled: (s) => s.phase === "connected",
+    enabled: () => false,
   },
   {
     id: "set-nickname",
@@ -215,7 +215,10 @@ export const CommandLive = Layer.effect(
         });
       if (!metadata.enabled(state))
         return yield* new CommandError({
-          message: `Command disabled: ${invocation.id}`,
+          message:
+            invocation.id === "open-private-chat"
+              ? "Command unavailable until M1-S3: open-private-chat"
+              : `Command disabled: ${invocation.id}`,
         });
       yield* validateArgs(invocation.id, invocation.args);
       switch (invocation.id) {
@@ -251,13 +254,19 @@ export const CommandLive = Layer.effect(
           return yield* teamspeak.setNickname(
             yield* required(invocation.args, "nickname"),
           );
-        case "select-channel":
+        case "select-channel": {
+          const channelId = yield* required(invocation.args, "channelId");
+          if (!state.channels.some((channel) => channel.id === channelId))
+            return yield* new CommandError({
+              message: `Unknown channel: ${channelId}`,
+            });
           return yield* bus
             .publish({
               _tag: "ChannelSelected",
-              channelId: yield* required(invocation.args, "channelId"),
+              channelId,
             })
             .pipe(Effect.asVoid);
+        }
         case "focus-next":
         case "focus-prev": {
           const focus = state.focus === "tree" ? "chat" : "tree";
@@ -280,12 +289,9 @@ export const CommandLive = Layer.effect(
             .pipe(Effect.asVoid);
         }
         case "open-private-chat":
-          return yield* bus
-            .publish({
-              _tag: "ChannelSelected",
-              channelId: yield* required(invocation.args, "targetId"),
-            })
-            .pipe(Effect.asVoid);
+          return yield* new CommandError({
+            message: "Command unavailable until M1-S3: open-private-chat",
+          });
         case "quit":
           return;
       }

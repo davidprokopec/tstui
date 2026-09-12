@@ -57,7 +57,9 @@ export const reduceEvent = (state: AppState, event: DomainEvent): AppState => {
         },
       };
     case "ChannelSelected":
-      return { ...state, selectedChannelId: event.channelId };
+      return state.channels.some((channel) => channel.id === event.channelId)
+        ? { ...state, selectedChannelId: event.channelId }
+        : state;
     case "ChannelJoined":
       return { ...state, activeChannelId: event.channelId };
     case "FocusChanged":

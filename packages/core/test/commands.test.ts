@@ -10,6 +10,7 @@ import {
   CommandService,
   ProjectionService,
   commandRegistry,
+  initialState,
   makeAppLayer,
   type AppState,
 } from "../src/index.js";
@@ -27,6 +28,9 @@ const waitForState = (
       ),
     ),
   );
+
+const commandEnabled = (id: string, state: AppState): boolean =>
+  commandRegistry.find((command) => command.id === id)?.enabled(state) ?? false;
 
 test("command interpreter rejects unknown and disabled commands", async () => {
   const runtime = ManagedRuntime.make(makeAppLayer(true));
@@ -149,6 +153,79 @@ test("focus and tree commands enforce focus, bounds, and selected-channel join",
       (await waitForState(runtime, (state) => state.selectedChannelId === "3"))
         .selectedChannelId,
     ).toBe("3");
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+test("new command enablement rejects disconnected, empty, missing, and wrong-focus states", () => {
+  const disconnected = initialState;
+  const empty = {
+    ...initialState,
+    phase: "connected" as const,
+    focus: "tree" as const,
+  };
+  const missing = {
+    ...empty,
+    channels: [{ id: "1", parentId: "0", name: "Lobby" }],
+    selectedChannelId: "missing",
+  };
+  const chat = {
+    ...missing,
+    selectedChannelId: "1",
+    focus: "chat" as const,
+  };
+
+  for (const id of ["focus-next", "focus-prev", "tree-up", "tree-down"])
+    expect(commandEnabled(id, disconnected)).toBe(false);
+  for (const id of ["tree-up", "tree-down", "join-channel"])
+    expect(commandEnabled(id, empty)).toBe(false);
+  for (const id of ["tree-up", "tree-down", "join-channel"])
+    expect(commandEnabled(id, missing)).toBe(false);
+  expect(commandEnabled("join-channel", chat)).toBe(false);
+});
+
+test("invalid channel and deferred private targets return typed errors without moving the cursor", async () => {
+  const runtime = ManagedRuntime.make(makeAppLayer(true));
+  try {
+    await runtime.runPromise(
+      CommandService.use((service) =>
+        service.execute({
+          id: "connect",
+          args: { server: "demo", nickname: "Test" },
+        }),
+      ),
+    );
+    const connected = await waitForState(
+      runtime,
+      (state) => state.channels.length === 3,
+    );
+
+    const invalidChannel = await runtime.runPromise(
+      CommandService.use((service) =>
+        service
+          .execute({ id: "select-channel", args: { channelId: "missing" } })
+          .pipe(Effect.flip),
+      ),
+    );
+    const privateTarget = await runtime.runPromise(
+      CommandService.use((service) =>
+        service
+          .execute({ id: "open-private-chat", args: { targetId: "bot" } })
+          .pipe(Effect.flip),
+      ),
+    );
+    const after = await runtime.runPromise(
+      ProjectionService.use((projection) => projection.snapshot),
+    );
+
+    expect(invalidChannel._tag).toBe("CommandError");
+    expect(invalidChannel.message).toBe("Unknown channel: missing");
+    expect(privateTarget._tag).toBe("CommandError");
+    expect(privateTarget.message).toBe(
+      "Command unavailable until M1-S3: open-private-chat",
+    );
+    expect(after.selectedChannelId).toBe(connected.selectedChannelId);
   } finally {
     await runtime.dispose();
   }
