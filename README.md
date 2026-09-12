@@ -2,7 +2,7 @@
 
 An experimental, standalone-first TeamSpeak terminal client built with Bun, TypeScript, Effect, Solid and OpenTUI.
 
-> **M0 status:** the offline demo is implemented and tested. Real TeamSpeak connectivity, voice, file transfer, binaries and OpenCode hosting are not shipped.
+> **M1 status:** the first offline interaction slice is implemented: keyboard focus and channel-tree navigation/joining. Composer, private chats, help and connect UX remain planned. Real TeamSpeak connectivity, voice, file transfer, binaries and OpenCode hosting are not shipped.
 
 ## Capability status
 
@@ -10,10 +10,10 @@ An experimental, standalone-first TeamSpeak terminal client built with Bun, Type
 | ------------------------------------------------ | ------------------------- | -------------------------------- |
 | Offline server/channel/client/chat demo          | Tested                    | `bun test`; `bun run demo:smoke` |
 | HoneyBBQ identity + client initialization on Bun | Tested without network    | `bun run spike:honeybbq`         |
-| Live TeamSpeak text connection                   | Unverified / gated for M1 | No external server was contacted |
-| Voice/audio                                      | Unavailable               | Deliberately deferred to M3      |
+| Live TeamSpeak text connection                   | Unverified / gated for M3 | No external server was contacted |
+| Voice/audio                                      | Unavailable               | Deliberately deferred to M6      |
 | File transfer                                    | Unavailable               | Not implemented                  |
-| OpenCode v2 host                                 | Planned for M4            | No plugin package exists         |
+| OpenCode v2 host                                 | Planned for M8            | No plugin package exists         |
 | Prebuilt binaries / releases                     | Unavailable               | Source execution only            |
 
 ## Run the demo
@@ -25,7 +25,7 @@ bun install --frozen-lockfile
 bun run tstui -- --demo
 ```
 
-Press `q` to exit. The current M0 interface displays the deterministic demo, joins the Development channel and sends a scripted message. A full interactive composer and navigation are marked for M2.
+Use `j`/`k` or the arrow keys to move the channel cursor, `Enter` to join the selected channel, `Tab`/`Shift-Tab` to cycle focus, and `q` to exit. The demo still starts with a deterministic scripted message. Composer, private chats, help, and connect UX are later M1 slices.
 
 For a non-interactive render check:
 

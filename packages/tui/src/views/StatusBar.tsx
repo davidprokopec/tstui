@@ -11,7 +11,7 @@ export const StatusBar = (props: StatusBarProps) => (
       fg={props.state.error === null ? props.theme.muted : props.theme.danger}
     >
       {props.state.error ??
-        `${props.state.phase} · transport ${props.state.capabilities.transport} · text ${props.state.capabilities.text} · voice ${props.state.capabilities.voice}`}
+        `${props.state.phase} · focus ${props.state.focus} · transport ${props.state.capabilities.transport} · text ${props.state.capabilities.text} · voice ${props.state.capabilities.voice}`}
     </text>
   </box>
 );

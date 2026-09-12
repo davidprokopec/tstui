@@ -32,7 +32,41 @@ const MessageArgs = Schema.Struct({
 const PrivateChatArgs = Schema.Struct({ targetId: Schema.String });
 const NicknameArgs = Schema.Struct({ nickname: Schema.String });
 
+const selectedChannelIndex = (state: AppState): number =>
+  state.channels.findIndex((channel) => channel.id === state.selectedChannelId);
+
+const treeFocused = (state: AppState): boolean =>
+  state.phase === "connected" && state.focus === "tree";
+
 export const commandRegistry: ReadonlyArray<CommandMetadata> = [
+  {
+    id: "focus-next",
+    title: "Focus next",
+    description: "Move focus to the next panel",
+    args: NoArgs,
+    enabled: (s) => s.phase === "connected",
+  },
+  {
+    id: "focus-prev",
+    title: "Focus previous",
+    description: "Move focus to the previous panel",
+    args: NoArgs,
+    enabled: (s) => s.phase === "connected",
+  },
+  {
+    id: "tree-up",
+    title: "Previous channel",
+    description: "Move the tree cursor up",
+    args: NoArgs,
+    enabled: (s) => treeFocused(s) && selectedChannelIndex(s) >= 0,
+  },
+  {
+    id: "tree-down",
+    title: "Next channel",
+    description: "Move the tree cursor down",
+    args: NoArgs,
+    enabled: (s) => treeFocused(s) && selectedChannelIndex(s) >= 0,
+  },
   {
     id: "connect",
     title: "Connect",
@@ -58,8 +92,11 @@ export const commandRegistry: ReadonlyArray<CommandMetadata> = [
     id: "join-channel",
     title: "Join channel",
     description: "Move to a channel",
-    args: ChannelArgs,
-    enabled: (s) => s.phase === "connected",
+    args: NoArgs,
+    enabled: (s) =>
+      treeFocused(s) &&
+      s.selectedChannelId !== null &&
+      s.channels.some((channel) => channel.id === s.selectedChannelId),
   },
   {
     id: "send-message",
@@ -114,7 +151,6 @@ const validateArgs = (
         Effect.mapError(invalid),
       );
     case "select-channel":
-    case "join-channel":
       return Schema.decodeUnknownEffect(ChannelArgs)(args).pipe(
         Effect.asVoid,
         Effect.mapError(invalid),
@@ -197,9 +233,15 @@ export const CommandLive = Layer.effect(
         case "disconnect":
           return yield* teamspeak.disconnect;
         case "join-channel":
-          return yield* teamspeak.joinChannel(
-            yield* required(invocation.args, "channelId"),
-          );
+          if (state.selectedChannelId === null)
+            return yield* new CommandError({ message: "No channel selected" });
+          yield* teamspeak.joinChannel(state.selectedChannelId);
+          return yield* bus
+            .publish({
+              _tag: "ChannelJoined",
+              channelId: state.selectedChannelId,
+            })
+            .pipe(Effect.asVoid);
         case "send-message":
           return yield* teamspeak.sendMessage(
             yield* required(invocation.args, "targetId"),
@@ -216,6 +258,27 @@ export const CommandLive = Layer.effect(
               channelId: yield* required(invocation.args, "channelId"),
             })
             .pipe(Effect.asVoid);
+        case "focus-next":
+        case "focus-prev": {
+          const focus = state.focus === "tree" ? "chat" : "tree";
+          return yield* bus
+            .publish({ _tag: "FocusChanged", focus })
+            .pipe(Effect.asVoid);
+        }
+        case "tree-up":
+        case "tree-down": {
+          const current = selectedChannelIndex(state);
+          const offset = invocation.id === "tree-up" ? -1 : 1;
+          const next = Math.max(
+            0,
+            Math.min(state.channels.length - 1, current + offset),
+          );
+          const channel = state.channels[next];
+          if (channel === undefined) return;
+          return yield* bus
+            .publish({ _tag: "ChannelSelected", channelId: channel.id })
+            .pipe(Effect.asVoid);
+        }
         case "open-private-chat":
           return yield* bus
             .publish({

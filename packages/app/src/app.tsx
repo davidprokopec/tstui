@@ -32,7 +32,10 @@ export const run = async (args: ReadonlyArray<string>): Promise<void> => {
     await runtime.runPromise(
       ProjectionService.use((projection) =>
         SubscriptionRef.changes(projection.state).pipe(
-          Stream.filter((state) => state.phase === "connected"),
+          Stream.filter(
+            (state) =>
+              state.phase === "connected" && state.selectedChannelId !== null,
+          ),
           Stream.runHead,
           Effect.asVoid,
         ),
@@ -40,7 +43,21 @@ export const run = async (args: ReadonlyArray<string>): Promise<void> => {
     );
     await runtime.runPromise(
       CommandService.use((commands) =>
-        commands.execute({ id: "join-channel", args: { channelId: "2" } }),
+        commands.execute({ id: "select-channel", args: { channelId: "2" } }),
+      ),
+    );
+    await runtime.runPromise(
+      ProjectionService.use((projection) =>
+        SubscriptionRef.changes(projection.state).pipe(
+          Stream.filter((state) => state.selectedChannelId === "2"),
+          Stream.runHead,
+          Effect.asVoid,
+        ),
+      ),
+    );
+    await runtime.runPromise(
+      CommandService.use((commands) =>
+        commands.execute({ id: "join-channel", args: {} }),
       ),
     );
     await runtime.runPromise(
@@ -86,12 +103,17 @@ export const run = async (args: ReadonlyArray<string>): Promise<void> => {
           finish = resolve;
         });
         const keymap = createDefaultOpenTuiKeymap(renderer);
-        const disposeKeymaps = installKeymaps(keymap, dispatch, () =>
-          finish?.(),
+        let readState = (): typeof state => state;
+        const disposeKeymaps = installKeymaps(
+          keymap,
+          dispatch,
+          () => readState(),
+          () => finish?.(),
         );
         try {
           await render(() => {
             const [currentState, setCurrentState] = createSignal(state);
+            readState = currentState;
             const projectionFiber = runtime.runFork(
               ProjectionService.use((projection) =>
                 SubscriptionRef.changes(projection.state).pipe(

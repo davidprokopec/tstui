@@ -13,7 +13,9 @@ export const ChatView = (props: ChatViewProps) => {
     <box
       flexDirection="column"
       border
-      borderColor={props.theme.muted}
+      borderColor={
+        props.state.focus === "chat" ? props.theme.accent : props.theme.muted
+      }
       width="65%"
       padding={1}
     >

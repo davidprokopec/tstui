@@ -44,12 +44,17 @@ export interface CapabilityReport extends Schema.Schema.Type<
   typeof CapabilityReport
 > {}
 
+export const AppFocus = Schema.Literals(["tree", "chat", "help", "connect"]);
+export type AppFocus = typeof AppFocus.Type;
+
 export interface AppState {
   readonly phase: ConnectionPhase;
   readonly server: Server | null;
   readonly channels: ReadonlyArray<Channel>;
   readonly clients: ReadonlyArray<ClientEntry>;
   readonly activeChannelId: string | null;
+  readonly selectedChannelId: string | null;
+  readonly focus: AppFocus;
   readonly messages: Readonly<Record<string, ReadonlyArray<Message>>>;
   readonly nickname: string;
   readonly capabilities: CapabilityReport;
@@ -62,6 +67,8 @@ export const initialState: AppState = {
   channels: [],
   clients: [],
   activeChannelId: null,
+  selectedChannelId: null,
+  focus: "connect",
   messages: {},
   nickname: "tstui-user",
   capabilities: {

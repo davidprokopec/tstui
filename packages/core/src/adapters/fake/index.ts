@@ -85,7 +85,6 @@ export const FakeTeamSpeakLive = Layer.effect(
               clientId: "self",
               channelId,
             });
-            yield* bus.publish({ _tag: "ChannelSelected", channelId });
           }),
         ),
       sendMessage: (targetId, body) =>

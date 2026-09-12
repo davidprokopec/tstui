@@ -11,6 +11,8 @@ test("renders server tree, chat and honest capabilities", async () => {
     server: { id: "demo", name: "Demo Server" },
     channels: [{ id: "1", parentId: "0", name: "Lobby" }],
     activeChannelId: "1",
+    selectedChannelId: "1",
+    focus: "tree" as const,
     messages: {
       "1": [
         { id: "m", targetId: "1", sender: "Ada", body: "hello", timestamp: 0 },
@@ -19,7 +21,7 @@ test("renders server tree, chat and honest capabilities", async () => {
   };
   const setup = await testRender(
     () => <TstuiApp state={state} dispatch={() => undefined} />,
-    { width: 70, height: 20 },
+    { width: 90, height: 20 },
   );
   await setup.renderOnce();
   const frame = setup.captureCharFrame();
@@ -27,6 +29,7 @@ test("renders server tree, chat and honest capabilities", async () => {
   expect(frame).toContain("Demo Server");
   expect(frame).toContain("Ada: hello");
   expect(frame).toContain("voice unavailable");
+  expect(frame).toContain(">* # Lobby");
 });
 
 test("reacts to projected channel and message updates", async () => {
@@ -34,6 +37,8 @@ test("reacts to projected channel and message updates", async () => {
     ...initialState,
     phase: "connected" as const,
     activeChannelId: "1",
+    selectedChannelId: "1",
+    focus: "tree" as const,
   });
   const setup = await testRender(
     () =>
@@ -51,6 +56,7 @@ test("reacts to projected channel and message updates", async () => {
     setState({
       ...state(),
       activeChannelId: "2",
+      selectedChannelId: "2",
       messages: {
         "2": [
           {
@@ -68,6 +74,7 @@ test("reacts to projected channel and message updates", async () => {
     expect(frame).toContain("Chat · #2");
     expect(frame).toContain("Ada: reactive update");
     expect(frame).not.toContain("Chat · #1");
+    expect(frame).toContain("focus tree");
   } finally {
     setup.renderer.destroy();
   }

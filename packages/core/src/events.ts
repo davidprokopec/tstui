@@ -1,6 +1,7 @@
 import { Schema } from "effect";
 import {
   CapabilityReport,
+  AppFocus,
   Channel,
   ClientEntry,
   ConnectionPhase,
@@ -25,6 +26,8 @@ export const DomainEvent = Schema.Union([
   }),
   Schema.TaggedStruct("MessageReceived", { message: Message }),
   Schema.TaggedStruct("ChannelSelected", { channelId: Schema.String }),
+  Schema.TaggedStruct("ChannelJoined", { channelId: Schema.String }),
+  Schema.TaggedStruct("FocusChanged", { focus: AppFocus }),
   Schema.TaggedStruct("NicknameChanged", { nickname: Schema.String }),
   Schema.TaggedStruct("CapabilityChanged", { capabilities: CapabilityReport }),
   Schema.TaggedStruct("ErrorRaised", { message: Schema.String }),

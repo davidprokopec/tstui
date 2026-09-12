@@ -1,6 +1,32 @@
 import { expect, test } from "bun:test";
-import { ManagedRuntime } from "effect";
-import { CommandService, makeAppLayer } from "../src/index.js";
+import {
+  Effect,
+  ManagedRuntime,
+  Option,
+  Stream,
+  SubscriptionRef,
+} from "effect";
+import {
+  CommandService,
+  ProjectionService,
+  commandRegistry,
+  makeAppLayer,
+  type AppState,
+} from "../src/index.js";
+
+const waitForState = (
+  runtime: ManagedRuntime.ManagedRuntime<never, never>,
+  predicate: (state: AppState) => boolean,
+): Promise<AppState> =>
+  runtime.runPromise(
+    ProjectionService.use((projection) =>
+      SubscriptionRef.changes(projection.state).pipe(
+        Stream.filter(predicate),
+        Stream.runHead,
+        Effect.map(Option.getOrThrow),
+      ),
+    ),
+  );
 
 test("command interpreter rejects unknown and disabled commands", async () => {
   const runtime = ManagedRuntime.make(makeAppLayer(true));
@@ -20,6 +46,109 @@ test("command interpreter rejects unknown and disabled commands", async () => {
     );
     expect(unknown._tag).toBe("Failure");
     expect(disabled._tag).toBe("Failure");
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+test("focus and tree commands enforce focus, bounds, and selected-channel join", async () => {
+  const runtime = ManagedRuntime.make(makeAppLayer(true));
+  try {
+    await runtime.runPromise(
+      CommandService.use((service) =>
+        service.execute({
+          id: "connect",
+          args: { server: "demo", nickname: "Test" },
+        }),
+      ),
+    );
+    const connected = await waitForState(
+      runtime,
+      (state) => state.channels.length === 3,
+    );
+    expect(connected.focus).toBe("tree");
+    expect(connected.selectedChannelId).toBe("1");
+
+    const treeUp = commandRegistry.find((command) => command.id === "tree-up");
+    const treeDown = commandRegistry.find(
+      (command) => command.id === "tree-down",
+    );
+    expect(treeUp?.enabled(connected)).toBe(true);
+    expect(treeDown?.enabled(connected)).toBe(true);
+
+    await runtime.runPromise(
+      CommandService.use((service) =>
+        service.execute({ id: "tree-up", args: {} }),
+      ),
+    );
+    expect(
+      (await waitForState(runtime, (state) => state.selectedChannelId === "1"))
+        .selectedChannelId,
+    ).toBe("1");
+
+    await runtime.runPromise(
+      CommandService.use((service) =>
+        service.execute({ id: "tree-down", args: {} }),
+      ),
+    );
+    const selectedSecond = await waitForState(
+      runtime,
+      (state) => state.selectedChannelId === "2",
+    );
+    expect(selectedSecond.activeChannelId).toBeNull();
+
+    await runtime.runPromise(
+      CommandService.use((service) =>
+        service.execute({ id: "join-channel", args: {} }),
+      ),
+    );
+    expect(
+      (await waitForState(runtime, (state) => state.activeChannelId === "2"))
+        .activeChannelId,
+    ).toBe("2");
+
+    await runtime.runPromise(
+      CommandService.use((service) =>
+        service.execute({ id: "focus-next", args: {} }),
+      ),
+    );
+    const chatFocused = await waitForState(
+      runtime,
+      (state) => state.focus === "chat",
+    );
+    expect(treeDown?.enabled(chatFocused)).toBe(false);
+    const wrongFocus = await runtime.runPromiseExit(
+      CommandService.use((service) =>
+        service.execute({ id: "tree-down", args: {} }),
+      ),
+    );
+    expect(wrongFocus._tag).toBe("Failure");
+
+    await runtime.runPromise(
+      CommandService.use((service) =>
+        service.execute({ id: "focus-prev", args: {} }),
+      ),
+    );
+    await waitForState(runtime, (state) => state.focus === "tree");
+    await runtime.runPromise(
+      CommandService.use((service) =>
+        service.execute({ id: "tree-down", args: {} }),
+      ),
+    );
+    const bottom = await waitForState(
+      runtime,
+      (state) => state.selectedChannelId === "3",
+    );
+    expect(treeDown?.enabled(bottom)).toBe(true);
+    await runtime.runPromise(
+      CommandService.use((service) =>
+        service.execute({ id: "tree-down", args: {} }),
+      ),
+    );
+    expect(
+      (await waitForState(runtime, (state) => state.selectedChannelId === "3"))
+        .selectedChannelId,
+    ).toBe("3");
   } finally {
     await runtime.dispose();
   }

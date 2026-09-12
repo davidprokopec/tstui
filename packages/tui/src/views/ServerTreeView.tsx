@@ -9,7 +9,9 @@ export const ServerTreeView = (props: ServerTreeViewProps) => (
   <box
     flexDirection="column"
     border
-    borderColor={props.theme.muted}
+    borderColor={
+      props.state.focus === "tree" ? props.theme.accent : props.theme.muted
+    }
     width="35%"
     padding={1}
   >
@@ -22,7 +24,9 @@ export const ServerTreeView = (props: ServerTreeViewProps) => (
             : props.theme.text
         }
       >
-        # {channel.name}
+        {channel.id === props.state.selectedChannelId ? ">" : " "}
+        {channel.id === props.state.activeChannelId ? "*" : " "} #{" "}
+        {channel.name}
       </text>
     ))}
     <text fg={props.theme.muted}>Clients</text>

@@ -17,9 +17,23 @@ export const reduceEvent = (state: AppState, event: DomainEvent): AppState => {
         phase: event.phase,
         server: event.server,
         error: null,
+        focus:
+          event.phase === "connected"
+            ? "tree"
+            : event.phase === "disconnected"
+              ? "connect"
+              : state.focus,
       };
     case "ChannelListUpdated":
-      return { ...state, channels: event.channels };
+      return {
+        ...state,
+        channels: event.channels,
+        selectedChannelId: event.channels.some(
+          (channel) => channel.id === state.selectedChannelId,
+        )
+          ? state.selectedChannelId
+          : (event.channels[0]?.id ?? null),
+      };
     case "ClientListUpdated":
       return { ...state, clients: event.clients };
     case "ClientMoved":
@@ -43,7 +57,11 @@ export const reduceEvent = (state: AppState, event: DomainEvent): AppState => {
         },
       };
     case "ChannelSelected":
+      return { ...state, selectedChannelId: event.channelId };
+    case "ChannelJoined":
       return { ...state, activeChannelId: event.channelId };
+    case "FocusChanged":
+      return { ...state, focus: event.focus };
     case "NicknameChanged":
       return { ...state, nickname: event.nickname };
     case "CapabilityChanged":
