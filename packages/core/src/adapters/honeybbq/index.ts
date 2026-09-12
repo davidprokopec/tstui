@@ -85,9 +85,16 @@ const commandFailure = (cause: unknown): CommandError =>
 interface OwnedClient {
   readonly client: HoneyBBQClientHandle;
   readonly scope: Scope.Closeable;
+  readonly generation: number;
   acceptingCallbacks: boolean;
   overflowed: boolean;
   released: boolean;
+}
+
+interface ConnectionAttempt {
+  readonly generation: number;
+  owner: OwnedClient | null;
+  cancelled: boolean;
 }
 
 interface CallbackEvent {
@@ -115,6 +122,33 @@ export const makeHoneyBBQTeamSpeakLayer = (factory: HoneyBBQClientFactory) =>
         strategy: "dropping",
       });
       let active: OwnedClient | null = null;
+      let currentAttempt: ConnectionAttempt | null = null;
+      let latestGeneration = 0;
+
+      const cancelledAttempt = (): ConnectionError =>
+        new ConnectionError({
+          message: "Connection attempt was cancelled",
+          transient: false,
+        });
+
+      const ensureCurrent = (
+        attempt: ConnectionAttempt,
+      ): Effect.Effect<void, ConnectionError> =>
+        currentAttempt === attempt && !attempt.cancelled
+          ? Effect.void
+          : cancelledAttempt();
+
+      const ensureOwnerCurrent = (
+        attempt: ConnectionAttempt,
+        owner: OwnedClient,
+      ): Effect.Effect<void, ConnectionError> =>
+        currentAttempt === attempt &&
+        attempt.owner === owner &&
+        active === owner &&
+        !attempt.cancelled &&
+        !owner.released
+          ? Effect.void
+          : cancelledAttempt();
 
       const release = Effect.fn("HoneyBBQ.release")(function* (
         owner: OwnedClient,
@@ -153,16 +187,21 @@ export const makeHoneyBBQTeamSpeakLayer = (factory: HoneyBBQClientFactory) =>
         Stream.runForEach(({ owner, error }) =>
           Effect.gen(function* () {
             yield* release(owner);
-            yield* bus.publish({
-              _tag: "ConnectionChanged",
-              phase: "disconnected",
-              server: null,
-            });
-            if (error !== undefined)
+            if (
+              latestGeneration === owner.generation &&
+              currentAttempt === null
+            ) {
               yield* bus.publish({
-                _tag: "ErrorRaised",
-                message: error.message,
+                _tag: "ConnectionChanged",
+                phase: "disconnected",
+                server: null,
               });
+              if (error !== undefined)
+                yield* bus.publish({
+                  _tag: "ErrorRaised",
+                  message: error.message,
+                });
+            }
           }),
         ),
       );
@@ -189,121 +228,152 @@ export const makeHoneyBBQTeamSpeakLayer = (factory: HoneyBBQClientFactory) =>
 
       return TeamSpeakPort.of({
         connect: Effect.fn("HoneyBBQ.connect")(function* (options) {
-          if (active !== null)
+          if (currentAttempt !== null)
             return yield* new ConnectionError({
               message: "Already connected",
               transient: false,
             });
-          yield* bus.publish({
-            _tag: "ConnectionChanged",
-            phase: "connecting",
-            server: null,
-          });
-          const saved = yield* persistence.loadIdentity.pipe(
-            Effect.mapError((error) => connectionFailure(error.message)),
-          );
-          const identity = yield* Effect.try({
-            try: () =>
-              saved === null ? generateIdentity(8) : identityFromString(saved),
-            catch: connectionFailure,
-          });
-          if (saved === null)
-            yield* persistence
-              .saveIdentity(identity.toString())
-              .pipe(
-                Effect.mapError((error) => connectionFailure(error.message)),
-              );
-
-          const owner = yield* Effect.uninterruptible(
-            Effect.gen(function* () {
-              const scope = yield* Scope.make();
-              return yield* Effect.gen(function* () {
-                const client = yield* Effect.try({
-                  try: () => factory.create(identity, options),
-                  catch: connectionFailure,
-                });
-                const acquired: OwnedClient = {
-                  client,
-                  scope,
-                  acceptingCallbacks: true,
-                  overflowed: false,
-                  released: false,
-                };
-                yield* Scope.addFinalizer(
-                  scope,
-                  Effect.tryPromise({
-                    try: client.disconnect,
-                    catch: commandFailure,
-                  }).pipe(Effect.catch(() => Effect.void)),
-                );
-                active = acquired;
-                return acquired;
-              }).pipe(
-                Effect.onError(() =>
-                  Scope.close(scope, Exit.succeed(undefined)),
-                ),
-              );
-            }),
-          );
-          const client = owner.client;
-
-          const onTextMessage = (message: TextMessage): void => {
-            try {
-              enqueue(owner, {
-                _tag: "MessageReceived",
-                message: normalizeMessage(
-                  message,
-                  crypto.randomUUID(),
-                  Date.now(),
-                ),
-              });
-            } catch (cause) {
-              enqueue(owner, { _tag: "ErrorRaised", message: String(cause) });
-            }
+          latestGeneration += 1;
+          const attempt: ConnectionAttempt = {
+            generation: latestGeneration,
+            owner: null,
+            cancelled: false,
           };
-          const onClientMoved = (event: ClientMovedEvent): void => {
-            try {
-              enqueue(owner, {
-                _tag: "ClientMoved",
-                clientId: String(event.id),
-                channelId: event.targetChannelID.toString(),
-              });
-            } catch (cause) {
-              enqueue(owner, { _tag: "ErrorRaised", message: String(cause) });
-            }
-          };
-          const onDisconnected = (error: Error | undefined): void => {
-            if (!owner.acceptingCallbacks) return;
-            owner.acceptingCallbacks = false;
-            Queue.offerUnsafe(terminals, { owner, error });
-          };
-          client.onTextMessage(onTextMessage);
-          client.onClientMoved(onClientMoved);
-          client.onDisconnected(onDisconnected);
+          currentAttempt = attempt;
 
           yield* Effect.gen(function* () {
+            yield* bus.publish({
+              _tag: "ConnectionChanged",
+              phase: "connecting",
+              server: null,
+            });
+            yield* ensureCurrent(attempt);
+            const saved = yield* persistence.loadIdentity.pipe(
+              Effect.mapError((error) => connectionFailure(error.message)),
+            );
+            yield* ensureCurrent(attempt);
+            const identity = yield* Effect.try({
+              try: () =>
+                saved === null
+                  ? generateIdentity(8)
+                  : identityFromString(saved),
+              catch: connectionFailure,
+            });
+            yield* ensureCurrent(attempt);
+            if (saved === null) {
+              yield* persistence
+                .saveIdentity(identity.toString())
+                .pipe(
+                  Effect.mapError((error) => connectionFailure(error.message)),
+                );
+              yield* ensureCurrent(attempt);
+            }
+
+            const owner = yield* Effect.uninterruptible(
+              Effect.gen(function* () {
+                const scope = yield* Scope.make();
+                return yield* Effect.gen(function* () {
+                  const client = yield* Effect.try({
+                    try: () => factory.create(identity, options),
+                    catch: connectionFailure,
+                  });
+                  const acquired: OwnedClient = {
+                    client,
+                    scope,
+                    generation: attempt.generation,
+                    acceptingCallbacks: true,
+                    overflowed: false,
+                    released: false,
+                  };
+                  yield* Scope.addFinalizer(
+                    scope,
+                    Effect.tryPromise({
+                      try: client.disconnect,
+                      catch: commandFailure,
+                    }).pipe(Effect.catch(() => Effect.void)),
+                  );
+                  attempt.owner = acquired;
+                  return acquired;
+                }).pipe(
+                  Effect.onError(() =>
+                    Scope.close(scope, Exit.succeed(undefined)),
+                  ),
+                );
+              }),
+            );
+            yield* ensureCurrent(attempt);
+            active = owner;
+            const client = owner.client;
+
+            const onTextMessage = (message: TextMessage): void => {
+              try {
+                enqueue(owner, {
+                  _tag: "MessageReceived",
+                  message: normalizeMessage(
+                    message,
+                    crypto.randomUUID(),
+                    Date.now(),
+                  ),
+                });
+              } catch (cause) {
+                enqueue(owner, {
+                  _tag: "ErrorRaised",
+                  message: String(cause),
+                });
+              }
+            };
+            const onClientMoved = (event: ClientMovedEvent): void => {
+              try {
+                enqueue(owner, {
+                  _tag: "ClientMoved",
+                  clientId: String(event.id),
+                  channelId: event.targetChannelID.toString(),
+                });
+              } catch (cause) {
+                enqueue(owner, {
+                  _tag: "ErrorRaised",
+                  message: String(cause),
+                });
+              }
+            };
+            const onDisconnected = (error: Error | undefined): void => {
+              if (!owner.acceptingCallbacks) return;
+              attempt.cancelled = true;
+              if (currentAttempt === attempt) currentAttempt = null;
+              owner.acceptingCallbacks = false;
+              Queue.offerUnsafe(terminals, { owner, error });
+            };
+            client.onTextMessage(onTextMessage);
+            client.onClientMoved(onClientMoved);
+            client.onDisconnected(onDisconnected);
+
             yield* Effect.tryPromise({
               try: client.connect,
               catch: connectionFailure,
             });
+            yield* ensureOwnerCurrent(attempt, owner);
             const [channels, clients] = yield* Effect.tryPromise({
               try: () =>
                 Promise.all([client.listChannels(), client.listClients()]),
               catch: connectionFailure,
             });
+            yield* ensureOwnerCurrent(attempt, owner);
             yield* bus.publish({
               _tag: "ConnectionChanged",
               phase: "connected",
               server: { id: options.server, name: options.server },
             });
+            yield* ensureOwnerCurrent(attempt, owner);
             yield* bus.publish({
               _tag: "ChannelListUpdated",
               channels: [...channels],
             });
+            yield* ensureOwnerCurrent(attempt, owner);
             yield* bus.publish({
               _tag: "ClientListUpdated",
               clients: [...clients],
             });
+            yield* ensureOwnerCurrent(attempt, owner);
             yield* bus.publish({
               _tag: "CapabilityChanged",
               capabilities: {
@@ -313,29 +383,43 @@ export const makeHoneyBBQTeamSpeakLayer = (factory: HoneyBBQClientFactory) =>
                 transport: "honeybbq",
               },
             });
+            yield* ensureOwnerCurrent(attempt, owner);
           }).pipe(
             Effect.onExit((exit) =>
               Exit.isFailure(exit)
                 ? Effect.gen(function* () {
-                    yield* release(owner);
-                    yield* bus.publish({
-                      _tag: "ConnectionChanged",
-                      phase: "disconnected",
-                      server: null,
-                    });
+                    const owner = attempt.owner;
+                    if (owner !== null) yield* release(owner);
+                    if (currentAttempt === attempt) {
+                      attempt.cancelled = true;
+                      currentAttempt = null;
+                      if (latestGeneration === attempt.generation)
+                        yield* bus.publish({
+                          _tag: "ConnectionChanged",
+                          phase: "disconnected",
+                          server: null,
+                        });
+                    }
                   })
                 : Effect.void,
             ),
           );
         }),
         disconnect: Effect.gen(function* () {
-          const owner = active;
+          const attempt = currentAttempt;
+          const generation = attempt?.generation ?? latestGeneration;
+          if (attempt !== null) {
+            attempt.cancelled = true;
+            currentAttempt = null;
+          }
+          const owner = attempt?.owner ?? active;
           if (owner !== null) yield* release(owner);
-          yield* bus.publish({
-            _tag: "ConnectionChanged",
-            phase: "disconnected",
-            server: null,
-          });
+          if (latestGeneration === generation && currentAttempt === null)
+            yield* bus.publish({
+              _tag: "ConnectionChanged",
+              phase: "disconnected",
+              server: null,
+            });
         }),
         joinChannel: (channelId) =>
           withClient((client) => client.joinChannel(channelId)),

@@ -11,8 +11,11 @@ import {
 } from "effect";
 import {
   EventBusLive,
+  ConnectionError,
   makeHoneyBBQTeamSpeakLayer,
+  PersistenceError,
   PersistenceMemory,
+  PersistencePort,
   ProjectionLive,
   ProjectionService,
   TeamSpeakPort,
@@ -28,18 +31,21 @@ class MockClient implements HoneyBBQClientHandle {
   constructor(
     readonly connect: () => Promise<void>,
     readonly disconnectResult: () => Promise<void> = () => Promise.resolve(),
+    readonly channelResult: () => Promise<
+      ReadonlyArray<{ id: string; parentId: string; name: string }>
+    > = () => Promise.resolve([{ id: "1", parentId: "0", name: "Lobby" }]),
+    readonly clientResult: () => Promise<
+      ReadonlyArray<{ id: string; channelId: string; nickname: string }>
+    > = () =>
+      Promise.resolve([{ id: "self", channelId: "1", nickname: "Test" }]),
   ) {}
 
   readonly disconnect = async (): Promise<void> => {
     this.disconnectCalls += 1;
     await this.disconnectResult();
   };
-  readonly listChannels = async () => [
-    { id: "1", parentId: "0", name: "Lobby" },
-  ];
-  readonly listClients = async () => [
-    { id: "self", channelId: "1", nickname: "Test" },
-  ];
+  readonly listChannels = () => this.channelResult();
+  readonly listClients = () => this.clientResult();
   readonly joinChannel = async (): Promise<void> => undefined;
   readonly sendMessage = async (): Promise<void> => undefined;
   readonly setNickname = async (): Promise<void> => undefined;
@@ -84,6 +90,21 @@ const makeRuntime = (client: MockClient) => {
   return ManagedRuntime.make(services);
 };
 
+const makeRuntimeWithStorage = (
+  storage: PersistencePort["Service"],
+  create: () => HoneyBBQClientHandle,
+) => {
+  const infrastructure = Layer.merge(
+    EventBusLive,
+    Layer.succeed(PersistencePort)(storage),
+  );
+  const services = Layer.merge(
+    ProjectionLive,
+    makeHoneyBBQTeamSpeakLayer({ create }),
+  ).pipe(Layer.provideMerge(infrastructure));
+  return ManagedRuntime.make(services);
+};
+
 const connect = TeamSpeakPort.use((teamspeak) =>
   teamspeak.connect({ server: "mock", nickname: "Test" }),
 );
@@ -94,7 +115,8 @@ test("failed connection releases the client and projects disconnected", async ()
   );
   const runtime = makeRuntime(client);
   try {
-    expect((await runtime.runPromiseExit(connect))._tag).toBe("Failure");
+    const error = await runtime.runPromise(Effect.flip(connect));
+    expect(error._tag).toBe("ConnectionError");
     const state = await runtime.runPromise(
       Effect.yieldNow.pipe(
         Effect.andThen(
@@ -104,6 +126,105 @@ test("failed connection releases the client and projects disconnected", async ()
     );
     expect(state.phase).toBe("disconnected");
     expect(client.disconnectCalls).toBe(1);
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+test("invalid persisted identity fails typed and restores disconnected", async () => {
+  let factoryReached = false;
+  const runtime = makeRuntimeWithStorage(
+    PersistencePort.of({
+      loadIdentity: Effect.succeed("synthetic-invalid-identity"),
+      saveIdentity: () => Effect.void,
+    }),
+    () => {
+      factoryReached = true;
+      throw new Error("factory should not run");
+    },
+  );
+  try {
+    const error = await runtime.runPromise(Effect.flip(connect));
+    expect(error._tag).toBe("ConnectionError");
+    expect(factoryReached).toBe(false);
+    const state = await runtime.runPromise(
+      Effect.yieldNow.pipe(
+        Effect.andThen(
+          ProjectionService.use((projection) => projection.snapshot),
+        ),
+      ),
+    );
+    expect(state.phase).toBe("disconnected");
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+test("identity load failure and factory throw restore disconnected", async () => {
+  const failures: ReadonlyArray<{
+    readonly storage: PersistencePort["Service"];
+    readonly create: () => HoneyBBQClientHandle;
+  }> = [
+    {
+      storage: PersistencePort.of({
+        loadIdentity: new PersistenceError({ message: "load failed" }),
+        saveIdentity: () => Effect.void,
+      }),
+      create: () => new MockClient(() => Promise.resolve()),
+    },
+    {
+      storage: PersistencePort.of({
+        loadIdentity: Effect.succeed(null),
+        saveIdentity: () => Effect.void,
+      }),
+      create: () => {
+        throw new Error("factory failed");
+      },
+    },
+  ];
+  for (const failure of failures) {
+    const runtime = makeRuntimeWithStorage(failure.storage, failure.create);
+    try {
+      const error = await runtime.runPromise(Effect.flip(connect));
+      expect(error).toBeInstanceOf(ConnectionError);
+      const state = await runtime.runPromise(
+        Effect.yieldNow.pipe(
+          Effect.andThen(
+            ProjectionService.use((projection) => projection.snapshot),
+          ),
+        ),
+      );
+      expect(state.phase).toBe("disconnected");
+    } finally {
+      await runtime.dispose();
+    }
+  }
+});
+
+test("identity save failure restores disconnected before factory allocation", async () => {
+  let factoryReached = false;
+  const runtime = makeRuntimeWithStorage(
+    PersistencePort.of({
+      loadIdentity: Effect.succeed(null),
+      saveIdentity: () => new PersistenceError({ message: "save failed" }),
+    }),
+    () => {
+      factoryReached = true;
+      return new MockClient(() => Promise.resolve());
+    },
+  );
+  try {
+    const error = await runtime.runPromise(Effect.flip(connect));
+    expect(error._tag).toBe("ConnectionError");
+    expect(factoryReached).toBe(false);
+    const state = await runtime.runPromise(
+      Effect.yieldNow.pipe(
+        Effect.andThen(
+          ProjectionService.use((projection) => projection.snapshot),
+        ),
+      ),
+    );
+    expect(state.phase).toBe("disconnected");
   } finally {
     await runtime.dispose();
   }
@@ -124,6 +245,111 @@ test("interrupted connection releases the allocated client", async () => {
   await runtime.runPromise(Fiber.interrupt(fiber));
   expect(client.disconnectCalls).toBe(1);
   await runtime.dispose();
+});
+
+test("manual disconnect invalidates deferred initial listing", async () => {
+  let listingStarted: (() => void) | undefined;
+  let finishListing:
+    | ((
+        channels: ReadonlyArray<{ id: string; parentId: string; name: string }>,
+      ) => void)
+    | undefined;
+  const enteredListing = new Promise<void>((resolve) => {
+    listingStarted = resolve;
+  });
+  const channels = new Promise<
+    ReadonlyArray<{ id: string; parentId: string; name: string }>
+  >((resolve) => {
+    finishListing = resolve;
+  });
+  const client = new MockClient(
+    () => Promise.resolve(),
+    () => Promise.resolve(),
+    () => {
+      listingStarted?.();
+      return channels;
+    },
+  );
+  const runtime = makeRuntime(client);
+  try {
+    const connecting = runtime.runPromise(Effect.flip(connect));
+    await enteredListing;
+    await runtime.runPromise(
+      TeamSpeakPort.use((teamspeak) => teamspeak.disconnect),
+    );
+    finishListing?.([]);
+    const error = await connecting;
+    expect(error._tag).toBe("ConnectionError");
+    expect(error.transient).toBe(false);
+    const state = await runtime.runPromise(
+      Effect.yieldNow.pipe(
+        Effect.andThen(
+          ProjectionService.use((projection) => projection.snapshot),
+        ),
+      ),
+    );
+    expect(state.phase).toBe("disconnected");
+    expect(client.disconnectCalls).toBe(1);
+  } finally {
+    await runtime.dispose();
+  }
+});
+
+test("remote disconnect during listing cannot be overwritten by late success", async () => {
+  let listingStarted: (() => void) | undefined;
+  let finishListing:
+    | ((
+        channels: ReadonlyArray<{ id: string; parentId: string; name: string }>,
+      ) => void)
+    | undefined;
+  const enteredListing = new Promise<void>((resolve) => {
+    listingStarted = resolve;
+  });
+  const channels = new Promise<
+    ReadonlyArray<{ id: string; parentId: string; name: string }>
+  >((resolve) => {
+    finishListing = resolve;
+  });
+  const client = new MockClient(
+    () => Promise.resolve(),
+    () => Promise.resolve(),
+    () => {
+      listingStarted?.();
+      return channels;
+    },
+  );
+  const runtime = makeRuntime(client);
+  try {
+    const connecting = runtime.runPromise(Effect.flip(connect));
+    await enteredListing;
+    client.emitDisconnect(new Error("remote closed during listing"));
+    await runtime.runPromise(
+      ProjectionService.use((projection) =>
+        SubscriptionRef.changes(projection.state).pipe(
+          Stream.filter(
+            (snapshot) => snapshot.error === "remote closed during listing",
+          ),
+          Stream.runHead,
+        ),
+      ),
+    );
+    finishListing?.([]);
+    const error = await connecting;
+    expect(error._tag).toBe("ConnectionError");
+    expect(error.transient).toBe(false);
+    const state = await runtime.runPromise(
+      Effect.yieldNow.pipe(
+        Effect.andThen(
+          ProjectionService.use((projection) => projection.snapshot),
+        ),
+      ),
+    );
+    expect(state.phase).toBe("disconnected");
+    expect(state.error).toBe("remote closed during listing");
+    expect(client.disconnectCalls).toBe(1);
+  } finally {
+    await runtime.dispose();
+  }
 });
 
 test("errorful remote disconnect clears connected projection and releases", async () => {
