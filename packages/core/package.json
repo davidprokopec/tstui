@@ -7,7 +7,7 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@honeybbq/teamspeak-client": "0.2.3",
-    "effect": "4.0.0-rc.115"
+    "@honeybbq/teamspeak-client": "0.3.0",
+    "effect": "4.0.1"
   }
 }
