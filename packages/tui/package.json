@@ -7,10 +7,10 @@
     ".": "./src/index.ts"
   },
   "dependencies": {
-    "@opentui/core": "0.5.11",
-    "@opentui/keymap": "0.5.11",
-    "@opentui/solid": "0.5.11",
+    "@opentui/core": "0.6.5",
+    "@opentui/keymap": "0.6.5",
+    "@opentui/solid": "0.6.5",
     "@tstui/core": "workspace:*",
-    "solid-js": "1.9.15"
+    "solid-js": "1.9.17"
   }
 }
